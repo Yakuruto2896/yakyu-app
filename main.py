@@ -2,95 +2,64 @@ import streamlit as st
 import pandas as pd
 import datetime
 import time
-import os
 
-# --- 1. 保存用ファイル（CSV）の設定 ---
-CSV_FILE = "practice_log.csv"
-
-def load_data():
-    if os.path.exists(CSV_FILE):
-        return pd.read_csv(CSV_FILE)
-    else:
-        return pd.DataFrame(columns=["日付", "名前", "メニュー", "時間(分)", "評価", "メモ"])
-
-def save_data(new_row):
-    df = load_data()
-    df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-    df.to_csv(CSV_FILE, index=False, encoding="utf-8-sig")
-
-# --- 2. アプリの基本設定 ---
+# ページ設定
 st.set_page_config(page_title="チーム野球ノート", layout="wide")
 
-if "elapsed_time" not in st.session_state: st.session_state.elapsed_time = 0
-if "is_running" not in st.session_state: st.session_state.is_running = False
-if "last_start_time" not in st.session_state: st.session_state.last_start_time = None
+# --- ログイン機能 ---
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
 
-# --- 3. ログイン画面 ---
-if "user_name" not in st.session_state:
+if not st.session_state.logged_in:
     st.title("⚾️ チーム野球ノート ログイン")
-    name = st.selectbox("あなたの名前を選択してください", ["監督", "田中選手", "佐藤選手", "鈴木選手"])
+    user = st.text_input("選手名を入力してください")
     if st.button("ログイン"):
-        st.session_state["user_name"] = name
-        st.rerun()
-else:
-    user = st.session_state["user_name"]
-    st.sidebar.header(f"👤 {user}")
-    if st.sidebar.button("ログアウト"):
-        del st.session_state["user_name"]
-        st.rerun()
-
-    # --- 4. メイン画面 ---
-    st.title(f"🚀 {user} の練習管理")
-
-    if user != "監督":
-        st.subheader("⏱️ 練習時間を測る")
-        if st.session_state.is_running:
-            now = time.time()
-            st.session_state.elapsed_time += now - st.session_state.last_start_time
-            st.session_state.last_start_time = now
-
-        mins, secs = divmod(int(st.session_state.elapsed_time), 60)
-        st.metric("現在の練習時間", f"{mins:02d}:{secs:02d}")
-
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if not st.session_state.is_running:
-                if st.button("▶️ 開始 / 再開"):
-                    st.session_state.is_running = True
-                    st.session_state.last_start_time = time.time()
-                    st.rerun()
-            else:
-                if st.button("⏸️ 一時停止"):
-                    st.session_state.is_running = False
-                    st.rerun()
-        with col2:
-            if st.button("🔄 リセット"):
-                st.session_state.elapsed_time = 0
-                st.session_state.is_running = False
-                st.rerun()
-        
-        if st.session_state.is_running:
-            time.sleep(1)
+        if user:
+            st.session_state.logged_in = True
+            st.session_state.user = user
             st.rerun()
-
-    st.divider()
-
-    # --- 5. データ表示と保存 ---
-    df_history = load_data()
-    col_left, col_right = st.columns([2, 1])
-
-    with col_left:
-        st.subheader("📈 チーム全体の練習量推移")
-        if not df_history.empty:
-            chart_df = df_history.pivot_table(index="日付", columns="名前", values="時間(分)", aggfunc="sum").fillna(0)
-            st.line_chart(chart_df)
         else:
-            st.info("まだ練習記録がありません。")
+            st.error("名前を入力してください")
+else:
+    # --- メイン画面 ---
+    st.sidebar.title(f"👤 {st.session_state.user} 選手")
+    if st.sidebar.button("ログアウト"):
+        st.session_state.logged_in = False
+        st.rerun()
 
-        if user != "監督":
-            st.subheader("📝 今日の内容を記録")
-            with st.form("save_form"):
-                date_val = st.date_input("日付", datetime.date.today())
-                menu_val = st.selectbox("練習メニュー", ["打撃練習", "守備練習", "ピッチング", "走り込み", "筋トレ"])
-                measured_min = int(st.session_state.elapsed_time // 60)
-                time_val = st.number_input("練習時間（分）
+    menu = st.sidebar.radio("メニュー", ["練習記録", "ストップウォッチ", "データ分析"])
+
+    if menu == "練習記録":
+        st.header("📝 今日の練習を記録しよう")
+        date = st.date_input("日付", datetime.date.today())
+        menu_type = st.selectbox("練習メニュー", ["打撃練習", "守備練習", "投球練習", "走塁", "ウェイト"])
+        duration = st.number_input("時間（分）", min_value=0, step=5)
+        note = st.text_area("振り返り・気づいたこと")
+        
+        if st.button("記録を保存"):
+            st.success(f"{date} の {menu_type} を保存しました！")
+            st.balloons()
+
+    elif menu == "ストップウォッチ":
+        st.header("⏱️ ストップウォッチ")
+        if 'start_time' not in st.session_state:
+            st.session_state.start_time = None
+
+        col1, col2 = st.columns(2)
+        if col1.button("スタート"):
+            st.session_state.start_time = time.time()
+        if col2.button("リセット"):
+            st.session_state.start_time = None
+
+        if st.session_state.start_time:
+            placeholder = st.empty()
+            elapsed = time.time() - st.session_state.start_time
+            placeholder.metric("経過時間", f"{elapsed:.2f} 秒")
+
+    elif menu == "データ分析":
+        st.header("📊 練習の傾向")
+        chart_data = pd.DataFrame({
+            'メニュー': ["打撃", "守備", "投球", "ウェイト"],
+            '合計時間(分)': [120, 80, 60, 45]
+        })
+        st.bar_chart(chart_data.set_index('メニュー'))
